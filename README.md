@@ -1,178 +1,161 @@
-# 🚀 Hackathon React + BlockDAG DApp Starter
 
-This repository provides a **ready-to-use React app** with **TailwindCSS**, **Lucide Icons**, **Web3.js**, and a sample **MyToken smart contract** integration for the **BlockDAG EVM-compatible network**.  
-It is designed to help hackathon participants **quickly build and test DApps** without worrying about setup.
 
----
+````markdown
+ TrustFi – Decentralized Identity Verification DApp
 
-## ✨ Features
+**TrustFi** is a blockchain-based identity verification web application designed to enhance trust, transparency, and accountability in decentralized communities. Built on React and Web3.js, it integrates seamlessly with **BlockDAG EVM-compatible networks**. This project was developed for hackathon purposes to demonstrate a functional decentralized identity verification system.
+
+
+
+ 🚀 Features
 
 - ⚡ React 18 + Vite for fast development
 - 🎨 TailwindCSS for styling
 - 🖼️ Lucide React Icons for UI enhancements
 - 🔗 Web3.js for blockchain interaction
 - 🦊 MetaMask integration as the primary wallet
-- 📄 ABI + contract setup example (`MyToken.sol`)
-- 🛠️ Configurable for any **EVM-compatible chain** (including BlockDAG)
+- 📄 IdentityRegistry smart contract integration
+- 📊 Activity log and trust scoring for verified addresses
+- 🖨️ QR code generation for wallet sharing
+- 📋 Copy wallet address functionality
 
----
 
-## 📦 Prerequisites
 
-Before starting, ensure you have installed:
+ 📦 Prerequisites
+
+Before starting, ensure you have:
 
 - [Node.js](https://nodejs.org/) (>= 18.x recommended)
 - [MetaMask](https://metamask.io/) browser extension
 - A BlockDAG **testnet RPC endpoint** (provided by organizers)
 
----
 
-## 🛠️ Getting Started
 
-### 1. Clone this repo
+ 🛠️ Getting Started
+
+ 1. Clone this repo
 
 ```bash
-git clone https://github.com/<your-org>/blockdag-dapp-starter.git
-cd blockdag-dapp-starter
-```
+git clone https://github.com/<your-username>/TrustFi.git
+cd TrustFi/frontend
+````
 
-### 2. Install dependencies
+ 2. Install dependencies
 
 ```bash
 npm install
 ```
 
-### 3. Configure environment variables
+ 3. Configure environment variables
 
 Create a `.env` file in the root directory and add:
 
 ```env
-VITE_CONTRACT_ADDRESS=0xYourDeployedContractAddressHere
+VITE_CONTRACT_ADDRESS="0x2b60d7f0d18d1793dc06df79230d1a91adf4ee55"
 VITE_NETWORK_ID=1234 # Optional: BlockDAG Chain ID
 VITE_RPC_URL=https://blockdag-testnet-rpc-url
 ```
 
-Organizers will provide the deployed test contract address.
 
----
 
-## 📄 Contract (MyToken)
+ 🖥️ Running the App
 
-We included a sample ERC-20 style contract with ERC-2612 Permit support:
-
-```solidity
-// contracts/MyToken.sol
-// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
-
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
-
-contract MyToken is ERC20, ERC20Permit {
-    constructor() ERC20("MyToken", "MTK") ERC20Permit("MyToken") {}
-}
-```
-
-This contract is already deployed on the BlockDAG testnet.
-Participants can:
-
-- Read token name, symbol, and balance
-- Call transfer() and other ERC-20 methods
-- Use ERC-2612 permit() for gasless approvals
-
----
-
-## 🖥️ Running the App
-
-Start the local dev server:
+Start the local development server:
 
 ```bash
 npm run dev
 ```
 
-Visit: http://localhost:5173
+Visit: [http://localhost:5173](http://localhost:5173)
 
----
+Connect your wallet via MetaMask and interact with TrustFi.
 
-## 📌 Usage Flow
 
-1. Open the app in your browser
-2. Click Connect Wallet (MetaMask popup will appear)
-3. Ensure you are connected to the BlockDAG Testnet:
-   - RPC URL: https://rpc.blockdag.network
-   - Chain ID: (to be provided by organizers)
-4. Interact with the MyToken contract via UI
 
----
+ 📌 Usage Flow
 
-## 📁 Project Structure
+1. Connect your wallet (MetaMask)
+2. View your wallet QR code for easy sharing
+3. Check if an address is verified
+4. Set an address as verified/unverified (authorized users only)
+5. Monitor the on-chain activity log
+6. View trust score badges based on verification status and activity
+
+
+
+ 📄 How It Works
+
+* The **IdentityRegistry smart contract** stores verified addresses on-chain.
+* Users’ trust scores are computed using:
+
+  * Verified status (strong boost)
+  * Historical activity (up to a max score of 100)
+* QR codes are generated from wallet addresses for sharing and identification.
+* Activity logs are fetched from smart contract events and displayed in the UI.
+
+This approach ensures a **decentralized, auditable verification system** that does not rely on central authorities.
+
+
+
+🌐 Project Structure
 
 ```
 src/
  ├─ components/
- │   └─ ConnectWalletButton.jsx   # Wallet connection UI component
- ├─ hooks/
- │   └─ useContract.js            # Custom hook for contract interactions
+ │   └─ ConnectWalletButton.jsx  # Wallet connection component
  ├─ contracts/
- │   ├─ MyToken.json              # ABI file for the contract
- │   └─ MyToken.sol               # Solidity source for reference
+ │   └─ IdentityRegistryABI.json # ABI for smart contract
  ├─ App.jsx                       # Main application component
- ├─ main.jsx                      # Application entry point
- └─ index.css                     # Tailwind setup and global styles
+ ├─ main.jsx                      # Entry point
+ └─ index.css                     # Tailwind + global styles
 ```
 
-### Component Details
+ Component Details
 
-#### App.jsx
+* App.jsx: Manages wallet connection, verification, QR code generation, activity log, and trust score badge.
+* **ConnectWalletButton.jsx**: Reusable wallet connection component with copy address functionality.
 
-The main application component that:
 
-- Manages wallet connection state
-- Handles token balance fetching
-- Displays the UI for wallet and token information
 
-#### ConnectWalletButton.jsx
+🎯 Challenges & TrustFi Solutions
 
-A reusable component that:
+| Challenge                       | TrustFi Solution                                                  |
+| ------------------------------- | ----------------------------------------------------------------- |
+| Anonymous users causing fraud   | On-chain verification ensures only verified addresses are trusted |
+| Lack of reputation tracking     | Trust scores reflect verification status + historical activity    |
+| Non-transparent identity checks | Activity logs are stored on-chain and publicly auditable          |
 
-- Handles MetaMask connection
-- Displays connected account info
-- Provides copy address and disconnect functionality
-- Shows helpful notifications for connection status
 
-#### useContract.js
+ 💡 Use Cases & Benefits
 
-A custom hook that:
+* Prevent fraudulent activity and Sybil attacks in blockchain communities
+* Provide transparent reputation systems for decentralized governance
+* Enable easy wallet sharing through QR codes
+* Support integration into larger BlockDAG-based DApps
 
-- Creates an interface to the smart contract
-- Provides methods for all contract functions
-- Includes utility methods for formatting balances
 
----
 
-## 🔧 Future Extensions
+ 🔮 Future Enhancements
 
-Participants can extend the starter by:
+* On-chain **certificates** for verified achievements
+* Escrow payments and **group savings pools** for DeFi applications
+* Multi-chain support for cross-chain identity verification
 
-- Adding new contract interactions (e.g., NFT minting, DAO voting)
-- Supporting multiple wallets (WalletConnect, Coinbase Wallet)
-- Using state management (Zustand/Recoil/Redux) for bigger apps
-- Adding transaction status & notifications
-- Building a transfer form for token transactions
-- Implementing a token swap interface
 
----
 
-## 📚 Resources
+ 📚 Resources
 
-- [BlockDAG Documentation](https://docs.blockdag.network)
-- [Web3.js Documentation](https://web3js.readthedocs.io/)
-- [React Documentation](https://react.dev/)
-- [TailwindCSS Documentation](https://tailwindcss.com/docs)
-- [OpenZeppelin Contracts](https://docs.openzeppelin.com/contracts/)
+* [BlockDAG Documentation](https://docs.blockdag.network)
+* [Web3.js Documentation](https://web3js.readthedocs.io/)
+* [React Documentation](https://react.dev/)
+* [TailwindCSS Documentation](https://tailwindcss.com/docs)
+* [OpenZeppelin Contracts](https://docs.openzeppelin.com/contracts/)
 
----
 
-## 📝 License
+
+ 📝 License
 
 MIT
+
+
+
