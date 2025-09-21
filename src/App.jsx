@@ -1,204 +1,265 @@
-import { useState, useEffect } from "react";
-import ConnectWalletButton from "./components/ConnectWalletButton";
-import TokenTransferForm from "./components/TokenTransferForm";
-import { useContract } from "./hooks/useContract";
-import { AlertCircle, RefreshCw } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import Web3 from "web3";
+import { QRCode } from "react-qrcode-logo"; // Make sure to install 'react-qrcode-logo'
+import IdentityRegistryABI from "./abi/contract_abi.json";
 
-const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS;
+const CONTRACT_ADDRESS = "0x2b60d7f0d18d1793dc06df79230d1a91adf4ee55"; // replace with your deployed contract address
 
-/**
- * Main App component
- *
- * This component serves as the entry point for the dApp and manages:
- * - Wallet connection state
- * - Contract interactions
- * - Token balance display
- * - Token transfer functionality
- * - Error handling
- *
- * @returns {JSX.Element} The main application UI
- */
 export default function App() {
   const [web3, setWeb3] = useState(null);
   const [account, setAccount] = useState(null);
-  const [balance, setBalance] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [tokenInfo, setTokenInfo] = useState({
-    name: null,
-    symbol: null,
-    decimals: null,
-  });
-  const [showTransferForm, setShowTransferForm] = useState(false);
-  const [contractHelpers, setContractHelpers] = useState(null);
+  const [contract, setContract] = useState(null);
 
-  // Handle wallet connection
-  const handleConnected = (w3, acc) => {
-    setWeb3(w3);
-    setAccount(acc);
-    setError(null); // Clear any previous errors
+  const [addressToCheck, setAddressToCheck] = useState("");
+  const [verificationResult, setVerificationResult] = useState(null);
+  const [activityLog, setActivityLog] = useState([]);
 
-    // Reset balance when account changes
-    if (acc !== account) {
-      setBalance(null);
+  // Connect wallet
+  const connectWallet = async () => {
+    if (window.ethereum) {
+      try {
+        await window.ethereum.request({ method: "eth_requestAccounts" });
+        const w3 = new Web3(window.ethereum);
+        setWeb3(w3);
+
+        const accounts = await w3.eth.getAccounts();
+        setAccount(accounts[0]);
+
+        const c = new w3.eth.Contract(IdentityRegistryABI, CONTRACT_ADDRESS);
+        setContract(c);
+        loadActivityLog(c);
+      } catch (err) {
+        console.error("Wallet connection error:", err);
+      }
+    } else {
+      alert("MetaMask not detected!");
     }
   };
 
-  // Set up contract helpers when web3 is available
-  useEffect(() => {
-    if (web3 && CONTRACT_ADDRESS) {
-      const helpers = useContract(web3, CONTRACT_ADDRESS);
-      setContractHelpers(helpers);
-    } else {
-      setContractHelpers(null);
+  // Normalize address: returns checksum if valid, null otherwise
+  const normalizeAddress = (raw) => {
+    if (!raw) return null;
+    const s = raw.trim();
+    if (s.length !== 42 || !/^0x[0-9a-fA-F]{40}$/.test(s)) return null;
+    try {
+      return web3.utils.toChecksumAddress(s);
+    } catch {
+      return null;
     }
-  }, [web3, CONTRACT_ADDRESS]);
+  };
 
-  // Load token info when connected
-  useEffect(() => {
-    const loadTokenInfo = async () => {
-      if (contractHelpers && account) {
-        try {
-          const [name, symbol, decimals] = await Promise.all([
-            contractHelpers.name(),
-            contractHelpers.symbol(),
-            contractHelpers.decimals(),
-          ]);
-
-          setTokenInfo({
-            name,
-            symbol,
-            decimals,
-          });
-        } catch (err) {
-          console.warn("Non-critical error loading token info:", err);
-        }
-      }
-    };
-
-    loadTokenInfo();
-  }, [contractHelpers, account]);
-
-  const loadBalance = async () => {
-    if (!contractHelpers || !account) {
-      setError("Wallet not connected");
+  // Check verification
+  const checkVerification = async () => {
+    if (!contract || !web3) {
+      alert("Wallet not connected or contract not initialized");
       return;
     }
 
-    setError(null);
-    setLoading(true);
+    const normalized = normalizeAddress(addressToCheck);
+    if (!normalized) {
+      setVerificationResult("invalid");
+      return;
+    }
 
     try {
-      const bal = await contractHelpers.balanceOf(account);
-      const formattedBalance = contractHelpers.formatBalance(bal);
-      setBalance(formattedBalance);
+      const isVerified = await contract.methods.verified(normalized).call();
+      setVerificationResult(isVerified ? "true" : "false");
     } catch (err) {
-      console.error("Failed to load balance:", err);
-
-      // Provide user-friendly error messages
-      if (err.message.includes("missing trie node")) {
-        setError("Network data sync issue. Please try again in a moment.");
-      } else if (err.message.includes("JSON-RPC error")) {
-        setError("Network connection issue. Please check your wallet connection.");
-      } else {
-        setError("Failed to load balance. Please try again.");
-      }
-    } finally {
-      setLoading(false);
+      console.error("Contract call failed:", err);
+      setVerificationResult("error");
     }
   };
 
-  // Helper to clear errors
-  const clearError = () => setError(null);
+  // Set verified status
+  const setVerifiedStatus = async (addr, status) => {
+    if (!contract || !web3) {
+      alert("Wallet not connected or contract not initialized");
+      return;
+    }
 
-  // Handle successful token transfer
-  const handleTransferSuccess = () => {
-    // Reload the balance after a successful transfer
-    loadBalance();
+    const normalized = normalizeAddress(addr);
+    if (!normalized) {
+      alert("Enter a valid address");
+      return;
+    }
+
+    try {
+      await contract.methods.setVerified(normalized, status).send({ from: account });
+      alert(`Address ${normalized} set to ${status}`);
+      loadActivityLog(contract); // refresh activity log
+    } catch (err) {
+      console.error("Failed to set verified:", err);
+      alert(`Transaction failed: ${err.message}`);
+    }
+  };
+
+  // Load activity log from events
+  const loadActivityLog = async (c) => {
+    if (!c) return;
+
+    try {
+      const events = await c.getPastEvents("Verified", {
+        fromBlock: 0,
+        toBlock: "latest",
+      });
+
+      const log = events.map((e) => ({
+        address: e.returnValues.user,
+        status: e.returnValues.status,
+        txHash: e.transactionHash,
+      })).reverse(); // most recent first
+
+      setActivityLog(log);
+    } catch (err) {
+      console.error("Failed to load activity log:", err);
+    }
+  };
+
+  // Copy wallet to clipboard
+  const copyWallet = () => {
+    if (account) {
+      navigator.clipboard.writeText(account);
+      alert("Wallet address copied!");
+    }
   };
 
   return (
-    <div className="min-h-screen flex flex-col justify-center items-center bg-gradient-to-r from-dapp-primary to-dapp-secondary p-6">
-      <h1 className="text-3xl font-bold text-white mb-6">BlockDAG Token dApp</h1>
+    <div style={{ padding: "2rem", fontFamily: "Arial, sans-serif" }}>
+      <h1 style={{ color: "#2c3e50" }}>TrustFi Identity Verification</h1>
 
-      <ConnectWalletButton onConnected={handleConnected} />
-
-      {account && (
-        <div className="mt-6 w-full max-w-md bg-white shadow-lg rounded-2xl border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold text-dapp-primary mb-4">
-            {tokenInfo.name || "Token"} Details
-          </h2>
-
-          <p className="text-sm text-gray-700 break-all mb-2">
-            <span className="font-medium">Connected:</span> {account}
+      {!account ? (
+        <button
+          onClick={connectWallet}
+          style={{
+            padding: "0.6rem 1.2rem",
+            backgroundColor: "#3498db",
+            color: "#fff",
+            border: "none",
+            borderRadius: "6px",
+            cursor: "pointer",
+          }}
+        >
+          Connect Wallet
+        </button>
+      ) : (
+        <div style={{ marginBottom: "1rem" }}>
+          <p>
+            Connected: <b>{account}</b>{" "}
+            <button
+              onClick={copyWallet}
+              style={{
+                marginLeft: "0.5rem",
+                padding: "0.2rem 0.5rem",
+                cursor: "pointer",
+              }}
+            >
+              Copy
+            </button>
           </p>
-
-          {tokenInfo.name && tokenInfo.symbol && (
-            <p className="text-sm text-gray-700 mb-4">
-              <span className="font-medium">Token:</span> {tokenInfo.name} (
-              {tokenInfo.symbol})
-            </p>
-          )}
-
-          {error && (
-            <div className="my-3 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-600 flex items-start gap-2">
-              <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
-              <div>
-                <p>{error}</p>
-                <button
-                  onClick={clearError}
-                  className="text-xs text-red-700 underline mt-1 hover:text-red-800"
-                >
-                  Dismiss
-                </button>
-              </div>
-            </div>
-          )}
-
-          <button
-            onClick={loadBalance}
-            disabled={loading}
-            className={`w-full flex justify-center items-center gap-2 mt-4 px-4 py-2 rounded-xl text-white transition ${loading
-                ? "bg-gray-400 cursor-not-allowed"
-                : "bg-dapp-primary hover:bg-dapp-secondary"
-              }`}
-          >
-            {loading && <RefreshCw size={16} className="animate-spin" />}
-            {loading ? "Loading..." : "Check Token Balance"}
-          </button>
-
-          {balance !== null && (
-            <div className="mt-4 text-center">
-              <p className="text-dapp-accent font-medium">
-                Balance: {balance} {tokenInfo.symbol || "tokens"}
-              </p>
-              <p className="text-xs text-gray-500 mt-1">
-                Last updated: {new Date().toLocaleTimeString()}
-              </p>
-
-              <button
-                onClick={() => setShowTransferForm(!showTransferForm)}
-                className="mt-4 text-sm text-dapp-primary hover:text-dapp-secondary underline"
-              >
-                {showTransferForm ? "Hide Transfer Form" : "Send Tokens"}
-              </button>
-            </div>
-          )}
-
-          {showTransferForm && balance !== null && contractHelpers && (
-            <div className="mt-4 pt-4 border-t border-gray-100">
-              <TokenTransferForm
-                contractHelpers={contractHelpers}
-                account={account}
-                onSuccess={handleTransferSuccess}
-              />
-            </div>
-          )}
+          <QRCode value={account} size={128} fgColor="#2c3e50" bgColor="#ecf0f1" />
         </div>
       )}
 
-      <div className="mt-8 text-center text-white text-sm opacity-70">
-        <p>Built with BlockDAG dApp Starter Template</p>
+      <div style={{ marginTop: "2rem" }}>
+        <h2>Check Verification</h2>
+        <input
+          type="text"
+          placeholder="Enter address"
+          value={addressToCheck}
+          onChange={(e) => setAddressToCheck(e.target.value)}
+          style={{ width: "400px", padding: "0.5rem" }}
+        />
+        <button
+          onClick={checkVerification}
+          style={{
+            marginLeft: "1rem",
+            padding: "0.5rem 1rem",
+            backgroundColor: "#27ae60",
+            color: "#fff",
+            border: "none",
+            borderRadius: "5px",
+            cursor: "pointer",
+          }}
+        >
+          Check
+        </button>
+        {verificationResult && (
+          <p style={{ marginTop: "1rem" }}>
+            Result:{" "}
+            <b
+              style={{
+                color:
+                  verificationResult === "true"
+                    ? "green"
+                    : verificationResult === "false"
+                    ? "red"
+                    : "orange",
+              }}
+            >
+              {verificationResult}
+            </b>
+          </p>
+        )}
+      </div>
+
+      <div style={{ marginTop: "2rem" }}>
+        <h2>Set Verified Status</h2>
+        <input
+          type="text"
+          placeholder="Enter address"
+          onChange={(e) => setAddressToCheck(e.target.value)}
+          style={{ width: "300px", padding: "0.5rem" }}
+        />
+        <button
+          onClick={() => setVerifiedStatus(addressToCheck, true)}
+          style={{ marginLeft: "0.5rem", padding: "0.5rem 1rem", cursor: "pointer" }}
+        >
+          Verify
+        </button>
+        <button
+          onClick={() => setVerifiedStatus(addressToCheck, false)}
+          style={{
+            marginLeft: "0.5rem",
+            padding: "0.5rem 1rem",
+            cursor: "pointer",
+            backgroundColor: "#e74c3c",
+            color: "#fff",
+            border: "none",
+            borderRadius: "5px",
+          }}
+        >
+          Unverify
+        </button>
+      </div>
+
+      <div style={{ marginTop: "2rem" }}>
+        <h2>Activity Log</h2>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr style={{ backgroundColor: "#bdc3c7" }}>
+              <th style={{ padding: "0.5rem" }}>Address</th>
+              <th style={{ padding: "0.5rem" }}>Status</th>
+              <th style={{ padding: "0.5rem" }}>Tx Hash</th>
+            </tr>
+          </thead>
+          <tbody>
+            {activityLog.map((entry, idx) => (
+              <tr key={idx} style={{ backgroundColor: idx % 2 === 0 ? "#ecf0f1" : "#fff" }}>
+                <td style={{ padding: "0.5rem" }}>{entry.address}</td>
+                <td
+                  style={{
+                    padding: "0.5rem",
+                    color: entry.status ? "green" : "red",
+                    fontWeight: "bold",
+                  }}
+                >
+                  {entry.status ? "Verified" : "Unverified"}
+                </td>
+                <td style={{ padding: "0.5rem", fontSize: "0.8rem" }}>{entry.txHash}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
